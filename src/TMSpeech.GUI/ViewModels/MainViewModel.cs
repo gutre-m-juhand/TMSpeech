@@ -125,6 +125,15 @@ public class MainViewModel : ViewModelBase
     public string Text { get; }
 
     [Reactive]
+    public string TranslatedText { get; set; } = string.Empty;
+    
+    /// <summary>
+    /// 翻译是否启用（用于控制显示/隐藏）
+    /// </summary>
+    [Reactive]
+    public bool IsTranslationEnabled { get; set; } = false;
+
+    [Reactive]
     public bool IsLocked { get; set; }
 
     public ObservableCollection<TextInfo> HistoryTexts { get; } = new();
@@ -236,5 +245,30 @@ public class MainViewModel : ViewModelBase
                 p => _jobManager.SentenceDone -= p)
             .Select(x => x.EventArgs.Text)
             .Subscribe(x => { this.HistoryTexts.Add(x); });
+
+        // 订阅翻译完成事件
+        Observable.FromEventPattern<TranslationEventArgs>(
+                p => _jobManager.TranslationCompleted += p,
+                p => _jobManager.TranslationCompleted -= p)
+            .ObserveOn(RxApp.MainThreadScheduler)
+            .Subscribe(x =>
+            {
+                var args = x.EventArgs;
+                // 翻译启用时，显示翻译插件的原文和翻译结果
+                TranslatedText = $"{args.OriginalText}\n{args.TranslatedText}";
+                // 当收到翻译完成事件时，说明翻译已启用
+                IsTranslationEnabled = true;
+            });
+
+        // 订阅状态变化事件，当停止时禁用翻译显示
+        this.WhenAnyValue(x => x.Status)
+            .Subscribe(status =>
+            {
+                if (status == JobStatus.Stopped)
+                {
+                    IsTranslationEnabled = false;
+                    TranslatedText = string.Empty;
+                }
+            });
     }
 }

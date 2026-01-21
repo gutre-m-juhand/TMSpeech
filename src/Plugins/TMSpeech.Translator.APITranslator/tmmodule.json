@@ -1,0 +1,14 @@
+{
+  "id": "TMSpeech.Translator.APITranslator",
+  "version": 1,
+  "displayVersion": "1.0.0",
+  "name": "API 翻译器",
+  "type": "plugin",
+  "description": "通过 API 服务进行文本翻译，支持多种翻译服务",
+  "author": "Built-in",
+  "license": "MIT License",
+  "apiLevel": 1,
+  "assemblies": [
+    "TMSpeech.Translator.APITranslator.dll"
+  ]
+}

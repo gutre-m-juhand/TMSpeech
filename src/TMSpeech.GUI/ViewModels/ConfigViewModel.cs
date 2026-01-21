@@ -45,8 +45,15 @@ namespace TMSpeech.GUI.ViewModels
                 .Select(u => u as ConfigJsonValueAttribute)
                 .FirstOrDefault()?.Key;
 
-            if (key != null) return key;
-            return $"{SectionName}.{prop.Name}";
+            if (key != null) 
+            {
+                System.Diagnostics.Debug.WriteLine($"[PropertyToKey] Property {prop.Name} has explicit key: {key}");
+                return key;
+            }
+            
+            var defaultKey = $"{SectionName}.{prop.Name}";
+            System.Diagnostics.Debug.WriteLine($"[PropertyToKey] Property {prop.Name} using default key: {defaultKey}");
+            return defaultKey;
         }
 
         public virtual Dictionary<string, object> Serialize()
@@ -59,6 +66,7 @@ namespace TMSpeech.GUI.ViewModels
                 {
                     var value = p.GetValue(this);
                     ret[PropertyToKey(p)] = value;
+                    System.Diagnostics.Debug.WriteLine($"[Serialize] Property: {p.Name}, Key: {PropertyToKey(p)}, Value: {value}");
                 });
             return ret;
         }
@@ -97,13 +105,19 @@ namespace TMSpeech.GUI.ViewModels
                 .ToList()
                 .ForEach(p =>
                 {
-                    if (!dict.ContainsKey(PropertyToKey(p))) return;
+                    if (!dict.ContainsKey(PropertyToKey(p))) 
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[Deserialize] Property {p.Name} not found in dict with key {PropertyToKey(p)}");
+                        return;
+                    }
                     var value = dict[PropertyToKey(p)];
                     var type = p.PropertyType;
 
                     try
                     {
+                        System.Diagnostics.Debug.WriteLine($"[Deserialize] Setting {p.Name} = {value} (type: {type.Name})");
                         p.SetValue(this, ChangeType(value, type));
+                        System.Diagnostics.Debug.WriteLine($"[Deserialize] Successfully set {p.Name}");
                     }
                     catch (Exception ex)
                     {
@@ -115,34 +129,55 @@ namespace TMSpeech.GUI.ViewModels
         public void Load()
         {
             var dict = ConfigManagerFactory.Instance.GetAll();
-            Deserialize(
-                dict.Where(x => ConfigManager.IsInSection(x.Key, SectionName))
-                    .ToDictionary(x => x.Key, x => x.Value)
-            );
+            System.Diagnostics.Debug.WriteLine($"[Load] All config keys: {string.Join(", ", dict.Keys)}");
+            
+            var filteredDict = dict.Where(x => ConfigManager.IsInSection(x.Key, SectionName))
+                .ToDictionary(x => x.Key, x => x.Value);
+            
+            System.Diagnostics.Debug.WriteLine($"[Load] Filtered keys for section '{SectionName}': {string.Join(", ", filteredDict.Keys)}");
+            
+            Deserialize(filteredDict);
         }
 
         public void Apply()
         {
             var dict = Serialize();
+            System.Diagnostics.Debug.WriteLine($"[SectionConfigViewModelBase.Apply] Section: {SectionName}, Serialized: {JsonSerializer.Serialize(dict)}");
             ConfigManagerFactory.Instance.BatchApply(dict.Where(u => u.Value != null)
                 .ToDictionary(x => x.Key, x => x.Value));
         }
 
         public SectionConfigViewModelBase()
         {
+            System.Diagnostics.Debug.WriteLine($"[SectionConfigViewModelBase] Constructor called for {this.GetType().Name}");
             Load();
+            System.Diagnostics.Debug.WriteLine($"[SectionConfigViewModelBase] Load() completed");
+            
             this.PropertyChanged += (sender, args) =>
             {
                 var propName = args.PropertyName;
                 var type = sender.GetType();
+                System.Diagnostics.Debug.WriteLine($"[SectionConfigViewModelBase.PropertyChanged] Property changed: {propName}");
 
-                if (sender.GetType().GetProperty(propName)
-                    .GetCustomAttributes(false)
+                var prop = sender.GetType().GetProperty(propName);
+                if (prop == null)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[SectionConfigViewModelBase.PropertyChanged] Property {propName} not found");
+                    return;
+                }
+
+                if (prop.GetCustomAttributes(false)
                     .Any(u => u.GetType() == typeof(ConfigJsonValueAttribute)))
                 {
+                    System.Diagnostics.Debug.WriteLine($"[SectionConfigViewModelBase.PropertyChanged] Property {propName} has ConfigJsonValue attribute, calling Apply()");
                     Apply();
                 }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine($"[SectionConfigViewModelBase.PropertyChanged] Property {propName} does NOT have ConfigJsonValue attribute");
+                }
             };
+            System.Diagnostics.Debug.WriteLine($"[SectionConfigViewModelBase] PropertyChanged event handler registered");
         }
     }
 
@@ -156,6 +191,7 @@ namespace TMSpeech.GUI.ViewModels
         public AudioSectionConfigViewModel AudioSectionConfig { get; } = new AudioSectionConfigViewModel();
         public RecognizeSectionConfigViewModel RecognizeSectionConfig { get; } = new RecognizeSectionConfigViewModel();
         public NotificationConfigViewModel NotificationConfig { get; } = new NotificationConfigViewModel();
+        public TranslatorConfigViewModel TranslatorConfig { get; } = new TranslatorConfigViewModel();
 
         [ObservableAsProperty]
         public bool IsNotRunning { get; }
@@ -487,6 +523,155 @@ namespace TMSpeech.GUI.ViewModels
                         );
                     }
                 });
+        }
+    }
+
+    public class TranslatorConfigViewModel : SectionConfigViewModelBase
+    {
+        protected override string SectionName => TranslatorConfigTypes.SectionName;
+
+        [Reactive]
+        [ConfigJsonValue(TranslatorConfigTypes.EnableTranslator)]
+        public bool EnableTranslator { get; set; }
+
+        [Reactive]
+        [ConfigJsonValue(TranslatorConfigTypes.Translator)]
+        public string Translator { get; set; } = "";
+
+        [ObservableAsProperty]
+        public IReadOnlyDictionary<string, Core.Plugins.ITranslator> TranslatorsAvailable { get; }
+
+        [Reactive]
+        public Core.Plugins.IPluginConfigEditor? ConfigEditor { get; set; }
+
+        [Reactive]
+        public string PluginConfig { get; set; } = "";
+
+        [Reactive]
+        public string TestResult { get; set; } = "";
+
+        [Reactive]
+        public Avalonia.Media.IBrush TestResultColor { get; set; } = Avalonia.Media.Brushes.Transparent;
+
+        public ReactiveCommand<Unit, Unit> RefreshCommand { get; }
+        public ReactiveCommand<Unit, Unit> TestTranslateCommand { get; }
+
+        public IReadOnlyDictionary<string, Core.Plugins.ITranslator> Refresh()
+        {
+            var plugins = PluginManagerFactory.GetInstance().Translators;
+            if (Translator == "" && plugins.Count >= 1)
+                Translator = plugins.First().Key;
+            return plugins;
+        }
+
+        private void UpdateConfigEditor()
+        {
+            if (ConfigEditor != null)
+            {
+                ConfigEditor.ValueUpdated -= OnConfigEditorValueUpdated;
+            }
+
+            if (!EnableTranslator || string.IsNullOrEmpty(Translator))
+            {
+                ConfigEditor = null;
+                PluginConfig = "";
+                return;
+            }
+
+            var plugins = PluginManagerFactory.GetInstance().Translators;
+            if (plugins.TryGetValue(Translator, out var plugin))
+            {
+                var editor = plugin.CreateConfigEditor();
+                var config = ConfigManagerFactory.Instance.Get<string>(
+                    TranslatorConfigTypes.GetPluginConfigKey(Translator));
+                editor.LoadConfigString(config);
+                
+                PluginConfig = editor.GenerateConfig();
+                editor.ValueUpdated += OnConfigEditorValueUpdated;
+                ConfigEditor = editor;
+            }
+        }
+
+        private void OnConfigEditorValueUpdated(object? s, EventArgs e)
+        {
+            if (ConfigEditor == null || string.IsNullOrEmpty(Translator))
+                return;
+
+            PluginConfig = ConfigEditor.GenerateConfig();
+            var key = TranslatorConfigTypes.GetPluginConfigKey(Translator);
+            ConfigManagerFactory.Instance.Apply(key, PluginConfig);
+        }
+
+        public TranslatorConfigViewModel()
+        {
+            this.RefreshCommand = ReactiveCommand.Create(() => { });
+            this.RefreshCommand.Merge(Observable.Return(Unit.Default))
+                .SelectMany(u => Observable.FromAsync(() => Task.Run(() => Refresh())))
+                .ObserveOn(RxApp.MainThreadScheduler)
+                .ToPropertyEx(this, x => x.TranslatorsAvailable);
+
+            this.WhenAnyValue(x => x.Translator, x => x.EnableTranslator)
+                .Subscribe(_ => UpdateConfigEditor());
+
+            this.WhenAnyValue(x => x.PluginConfig)
+                .Skip(1)
+                .Subscribe(config =>
+                {
+                    if (!string.IsNullOrEmpty(Translator))
+                    {
+                        var key = TranslatorConfigTypes.GetPluginConfigKey(Translator);
+                        ConfigManagerFactory.Instance.Apply(key, config);
+                    }
+                });
+
+            this.RefreshCommand.Execute().Subscribe();
+            this.TestTranslateCommand = ReactiveCommand.CreateFromTask(TestTranslateAsync);
+        }
+
+        private async Task TestTranslateAsync()
+        {
+            if (string.IsNullOrEmpty(Translator))
+            {
+                TestResult = "❌ 请先选择翻译器";
+                TestResultColor = Avalonia.Media.Brushes.Red;
+                return;
+            }
+
+            try
+            {
+                TestResult = "⏳ 测试中...";
+                TestResultColor = Avalonia.Media.Brushes.Orange;
+
+                string result = await JobManagerFactory.Instance.TestTranslateAsync(
+                    "hello world",
+                    "en",
+                    "zh-CN"
+                );
+
+                if (!result.Contains("[ERROR]"))
+                {
+                    var parts = result.Split('|');
+                    if (parts.Length == 2)
+                    {
+                        TestResult = $"✅ 成功 ({parts[1]}): {parts[0]}";
+                    }
+                    else
+                    {
+                        TestResult = $"✅ 成功: {result}";
+                    }
+                    TestResultColor = Avalonia.Media.Brushes.Green;
+                }
+                else
+                {
+                    TestResult = $"❌ {result}";
+                    TestResultColor = Avalonia.Media.Brushes.Red;
+                }
+            }
+            catch (Exception ex)
+            {
+                TestResult = $"❌ 错误: {ex.Message}";
+                TestResultColor = Avalonia.Media.Brushes.Red;
+            }
         }
     }
 }

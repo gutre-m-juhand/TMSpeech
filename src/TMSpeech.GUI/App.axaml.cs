@@ -104,6 +104,9 @@ public partial class App : Application
             // Run recognizer if config is set.
             try
             {
+                // 强制设置为 false，不自动启动
+                ConfigManagerFactory.Instance.Apply(GeneralConfigTypes.StartOnLaunch, false);
+                
                 if (ConfigManagerFactory.Instance.Get<bool>(GeneralConfigTypes.StartOnLaunch))
                 {
                     Dispatcher.UIThread.Post(() => { _mainWindow.ViewModel.PlayCommand.Execute(); });

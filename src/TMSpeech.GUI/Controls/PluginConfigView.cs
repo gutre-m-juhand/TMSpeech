@@ -63,25 +63,87 @@ public class PluginConfigView : UserControl
     {
         if (ConfigEditor == null) return;
         var values = ConfigEditor.GetAll();
-        foreach (var control in _container.Children.OfType<Control>())
+        int controlIndex = 0;
+        foreach (var formItem in ConfigEditor.GetFormItems())
         {
-            if (control.Tag is string key)
+            // 跳过标签，找到对应的控件
+            controlIndex++; // 标签
+            if (controlIndex >= _container.Children.Count) break;
+            
+            var control = _container.Children[controlIndex];
+            controlIndex++;
+            
+            if (!values.TryGetValue(formItem.Key, out var value)) continue;
+            
+            switch (control)
             {
-                if (!values.TryGetValue(key, out var value)) continue;
-                switch (control)
-                {
-                    case TextBox tb:
-                        tb.Text = value?.ToString() ?? "";
-                        break;
-                    case FilePicker fp:
-                        fp.Text = value?.ToString() ?? "";
-                        break;
-                    case ComboBox cb:
-                        cb.SelectedValue = value;
-                        break;
-                }
+                case TextBox tb when formItem is PluginConfigFormItemTextArea:
+                    // TextArea (multi-line TextBox)
+                    tb.Text = value?.ToString() ?? "";
+                    tb.IsEnabled = IsFieldEnabled(formItem.Key);
+                    break;
+                case TextBox tb:
+                    tb.Text = value?.ToString() ?? "";
+                    tb.IsEnabled = IsFieldEnabled(formItem.Key);
+                    break;
+                case FilePicker fp:
+                    fp.Text = value?.ToString() ?? "";
+                    fp.IsEnabled = IsFieldEnabled(formItem.Key);
+                    break;
+                case ComboBox cb:
+                    cb.SelectedValue = value;
+                    cb.IsEnabled = IsFieldEnabled(formItem.Key);
+                    break;
+                case CheckBox chk:
+                    chk.IsChecked = value is bool b && b;
+                    chk.IsEnabled = IsFieldEnabled(formItem.Key);
+                    break;
+                case Slider slider:
+                    if (float.TryParse(value?.ToString(), out var floatVal))
+                        slider.Value = floatVal;
+                    slider.IsEnabled = IsFieldEnabled(formItem.Key);
+                    break;
             }
         }
+    }
+
+    // 判断字段是否应该启用
+    private bool IsFieldEnabled(string fieldKey)
+    {
+        if (ConfigEditor == null) return true;
+        
+        var apiName = ConfigEditor.GetValue("ApiName")?.ToString() ?? "Google";
+        
+        // 通用字段始终启用
+        var commonFields = new[] { "ApiName", "TargetLanguage", "TimeoutMs", "ContextAwareEnabled", "ContextCount" };
+        if (commonFields.Contains(fieldKey))
+            return true;
+        
+        // 无需配置的 API
+        var noConfigApis = new[] { "Google", "Google2" };
+        if (noConfigApis.Contains(apiName))
+            return false;
+        
+        // REST API（DeepL、LibreTranslate、Youdao、Baidu、MTranServer）
+        var restApis = new[] { "DeepL", "LibreTranslate", "Youdao", "Baidu", "MTranServer" };
+        
+        // LLM API（OpenAI、Ollama、OpenRouter）
+        var llmApis = new[] { "OpenAI", "Ollama", "OpenRouter" };
+        
+        // REST API 和 LLM API 字段
+        if (fieldKey == "ApiUrl" || fieldKey == "ApiKey")
+            return restApis.Contains(apiName) || llmApis.Contains(apiName);
+        
+        // LLM API 字段
+        var llmApiFields = new[] { "ModelName", "Temperature", "Prompt" };
+        if (llmApiFields.Contains(fieldKey))
+            return llmApis.Contains(apiName);
+        
+        // ApiConfig 字段：始终显示，但仅对需要特定配置的 API 启用（Baidu、Youdao）
+        if (fieldKey == "ApiConfig")
+            return apiName == "Baidu" || apiName == "Youdao";
+        
+        return true;
     }
 
     // generate controls and events
@@ -152,6 +214,73 @@ public class PluginConfigView : UserControl
                     UpdateValueAndNotify();
                 };
                 control = cb;
+            }
+            else if (formItem is PluginConfigFormItemPassword)
+            {
+                var pb = new TextBox()
+                {
+                    Tag = formItem.Key,
+                    PasswordChar = '*'
+                };
+                pb.TextChanged += (_, _) =>
+                {
+                    if (_updateMode != UpdateMode.ViewToBoth) return;
+                    
+                    ConfigEditor.SetValue(formItem.Key, pb.Text);
+                    UpdateValueAndNotify();
+                };
+                control = pb;
+            }
+            else if (formItem is PluginConfigFormItemCheckbox)
+            {
+                var cb = new CheckBox()
+                {
+                    Tag = formItem.Key
+                };
+                cb.IsCheckedChanged += (_, _) =>
+                {
+                    if (_updateMode != UpdateMode.ViewToBoth) return;
+                    
+                    ConfigEditor.SetValue(formItem.Key, cb.IsChecked ?? false);
+                    UpdateValueAndNotify();
+                };
+                control = cb;
+            }
+            else if (formItem is PluginConfigFormItemSlider sliderFormItem)
+            {
+                var slider = new Slider()
+                {
+                    Tag = formItem.Key,
+                    Minimum = sliderFormItem.Min,
+                    Maximum = sliderFormItem.Max,
+                    TickFrequency = sliderFormItem.Step
+                };
+                slider.PropertyChanged += (_, e) =>
+                {
+                    if (_updateMode != UpdateMode.ViewToBoth || e.Property.Name != "Value") return;
+                    
+                    ConfigEditor.SetValue(formItem.Key, (float)slider.Value);
+                    UpdateValueAndNotify();
+                };
+                control = slider;
+            }
+            else if (formItem is PluginConfigFormItemTextArea textAreaFormItem)
+            {
+                var tb = new TextBox()
+                {
+                    Tag = formItem.Key,
+                    TextWrapping = TextWrapping.Wrap,
+                    AcceptsReturn = true,
+                    Height = 100
+                };
+                tb.TextChanged += (_, _) =>
+                {
+                    if (_updateMode != UpdateMode.ViewToBoth) return;
+                    
+                    ConfigEditor.SetValue(formItem.Key, tb.Text);
+                    UpdateValueAndNotify();
+                };
+                control = tb;
             }
             else
             {

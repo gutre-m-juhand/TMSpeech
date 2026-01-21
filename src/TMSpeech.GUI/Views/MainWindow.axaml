@@ -14,7 +14,7 @@
         Background="Transparent"
         Title="TMSpeech"
         CanResize="True"
-        Height="180"
+        Height="360"
         Width="800"
         IsHitTestVisible="{Binding !IsLocked}"
         PointerPressed="Window_PointerPressed"
@@ -49,6 +49,7 @@
   <Grid Name="mainGrid">
     <Grid.RowDefinitions>
       <RowDefinition Height="Auto" />
+      <RowDefinition Height="*" />
       <RowDefinition Height="*" />
     </Grid.RowDefinitions>
 
@@ -99,5 +100,14 @@
                        ShadowColor="{Binding CaptionStyle.ShadowColor}"
                        ShadowSize="{Binding CaptionStyle.ShadowSize}"
                        Text="{Binding Text}" />
+    <views:CaptionView Grid.Row="2" Margin="16"
+                       FontWeight="Bold"
+                       FontColor="{Binding CaptionStyle.FontColor}"
+                       FontSize="{Binding CaptionStyle.FontSize}"
+                       FontFamily="{Binding CaptionStyle.FontFamily}"
+                       TextAlign="{Binding CaptionStyle.TextAlign}"
+                       ShadowColor="{Binding CaptionStyle.ShadowColor}"
+                       ShadowSize="{Binding CaptionStyle.ShadowSize}"
+                       Text="{Binding TranslatedText}" />
   </Grid>
 </Window>

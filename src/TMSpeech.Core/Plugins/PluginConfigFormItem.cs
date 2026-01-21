@@ -57,10 +57,26 @@ public record PluginConfigFormItemNumber(
     bool IsInteger = true
 ) : PluginConfigFormItem(Key, Name, Description);
 
-public record PluginConfigFormCheckBox(
+public record PluginConfigFormItemCheckbox(
     string Key,
     string Name,
     string Description = ""
+) : PluginConfigFormItem(Key, Name, Description);
+
+public record PluginConfigFormItemSlider(
+    string Key,
+    string Name,
+    float Min = 0,
+    float Max = 1,
+    float Step = 0.1f,
+    string Description = ""
+) : PluginConfigFormItem(Key, Name, Description);
+
+public record PluginConfigFormItemTextArea(
+    string Key,
+    string Name,
+    string Description = "",
+    string Placeholder = ""
 ) : PluginConfigFormItem(Key, Name, Description);
 
 public record PluginConfigFormItemColor(

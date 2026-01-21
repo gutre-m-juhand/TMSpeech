@@ -126,6 +126,7 @@ namespace TMSpeech.Recognizer.SherpaOnnx
 
                 if (!string.IsNullOrEmpty(text))
                 {
+                    text = text.ToLower();
                     var item = new TextInfo(text);
                     // Console.WriteLine($"{is_endpoint}: {text}");
                     TextChanged?.Invoke(this, new SpeechEventArgs()

@@ -16,7 +16,7 @@ public static class GeneralConfigTypes
     {
         { Language, "zh-cn" },
         { LaunchOnStartup, false },
-        { StartOnLaunch, true },
+        { StartOnLaunch, false },
         { AutoUpdate, true },
         { ResultLogPath, Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "TMSpeechLogs") },
         { MainWindowLocation, new List<int>() }
@@ -108,4 +108,24 @@ public static class RecognizerConfigTypes
     {
         return $"plugin.{pluginId}.config";
     }
+}
+
+public static class TranslatorConfigTypes
+{
+    public const string SectionName = "translator";
+
+    public const string Translator = "translator.source";
+    public const string EnableTranslator = "translator.enable";
+
+    public static string GetPluginConfigKey(string pluginId)
+    {
+        return $"plugin.{pluginId}.config";
+    }
+
+    private static Dictionary<string, object> _defaultConfig => new()
+    {
+        { EnableTranslator, false }
+    };
+
+    public static Dictionary<string, object> DefaultConfig => _defaultConfig;
 }
